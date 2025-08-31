@@ -1,0 +1,151 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    name: Validate Code
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Install global tools
+      run: |
+        npm install -g htmlhint
+        npm install -g jshint
+    
+    - name: Validate HTML
+      run: |
+        echo "Validating HTML files..."
+        htmlhint index.html
+    
+    - name: Create JSHint config
+      run: |
+        echo '{"esversion": 6, "browser": true, "undef": true, "unused": true}' > .jshintrc
+    
+    - name: Validate CSS
+      run: |
+        echo "Validating CSS files..."
+        echo "Basic CSS validation - checking for common syntax errors"
+        for file in *.css; do
+          if [ -f "$file" ]; then
+            echo "Checking $file..."
+            # Check for unmatched braces
+            OPEN_BRACES=$(grep -o '{' "$file" | wc -l)
+            CLOSE_BRACES=$(grep -o '}' "$file" | wc -l)
+            if [ "$OPEN_BRACES" -eq "$CLOSE_BRACES" ]; then
+              echo "✓ $file has balanced braces ($OPEN_BRACES pairs)"
+            else
+              echo "❌ $file has unmatched braces (open: $OPEN_BRACES, close: $CLOSE_BRACES)"
+              exit 1
+            fi
+            
+            # Check for basic CSS structure
+            if grep -q '[a-zA-Z.-].*{' "$file"; then
+              echo "✓ $file has CSS selectors"
+            else
+              echo "⚠ $file may not contain valid CSS selectors"
+            fi
+          fi
+        done
+    
+    - name: Extract and validate JavaScript
+      run: |
+        echo "Extracting and validating JavaScript..."
+        # Extract inline JavaScript from HTML
+        sed -n '/<script>/,/<\/script>/p' index.html | sed '/<script>/d; /<\/script>/d' > inline_script.js
+        if [ -s inline_script.js ]; then
+          echo "Found inline JavaScript:"
+          echo "----------------------------------------"
+          cat inline_script.js
+          echo "----------------------------------------"
+          echo "Running JSHint validation..."
+          if ! jshint inline_script.js; then
+            echo "❌ JavaScript validation failed - syntax errors found!"
+            exit 1
+          else
+            echo "✅ JavaScript validation passed"
+          fi
+        else
+          echo "No inline JavaScript found"
+        fi
+        rm -f inline_script.js
+    
+    - name: Check file structure
+      run: |
+        echo "Checking required files..."
+        test -f index.html || (echo "Missing index.html" && exit 1)
+        test -f style.css || (echo "Missing style.css" && exit 1)
+        test -d images || (echo "Missing images directory" && exit 1)
+        echo "All required files present ✓"
+
+  lighthouse:
+    runs-on: ubuntu-latest
+    name: Lighthouse Audit
+    needs: validate
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install Lighthouse CI
+      run: npm install -g @lhci/cli
+    
+    - name: Start local server
+      run: |
+        npx http-server . -p 8080 &
+        sleep 5
+    
+    - name: Run Lighthouse CI
+      run: |
+        lhci autorun --upload.target=temporary-public-storage --collect.url=http://localhost:8080
+      continue-on-error: true
+
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to GitHub Pages
+    needs: [validate, lighthouse]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+    
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: '.'
+    
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+# Enable GitHub Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false

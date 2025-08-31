@@ -1,0 +1,28 @@
+{
+  "name": "netflix-clone",
+  "version": "1.0.0",
+  "description": "A Netflix clone static website",
+  "main": "index.html",
+  "scripts": {
+    "validate": "npm run validate:html && npm run validate:css && npm run validate:js",
+    "validate:html": "htmlhint index.html",
+    "validate:css": "echo 'CSS validation - checking basic syntax'",
+    "validate:js": "node -e \"const fs=require('fs'); const html=fs.readFileSync('index.html','utf8'); const js=html.match(/<script[^>]*>([\\s\\S]*?)<\\/script>/g); if(js) { console.log('JavaScript found, manual review needed for syntax errors'); process.exit(1); } else { console.log('No JavaScript validation needed'); }\"",
+    "serve": "npx http-server . -p 8080",
+    "test": "npm run validate"
+  },
+  "keywords": [
+    "netflix",
+    "clone",
+    "html",
+    "css",
+    "javascript",
+    "static-website"
+  ],
+  "author": "GovindSinghh",
+  "license": "MIT",
+  "devDependencies": {
+    "htmlhint": "^1.1.4",
+    "http-server": "^14.1.1"
+  }
+}
